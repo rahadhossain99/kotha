@@ -1,0 +1,2366 @@
+<!DOCTYPE html>
+<html lang="bn" class="antialiased">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>কথা — HD অডিও কলিং অ্যাপ</title>
+
+  <!-- Google Fonts: Inter (English/Numbers) + Noto Sans Bengali (Clean Modern Bengali UI Font) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+Bengali:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', '"Noto Sans Bengali"', 'system-ui', 'sans-serif'],
+            mono: ['Inter', 'monospace']
+          },
+          colors: {
+            brand: {
+              50: '#ecfdf5',
+              100: '#d1fae5',
+              200: '#a7f3d0',
+              400: '#34d399',
+              500: '#10b981',
+              600: '#059669',
+              700: '#047857',
+              900: '#064e3b'
+            }
+          },
+          boxShadow: {
+            soft: '0 10px 30px -10px rgba(15, 23, 42, 0.08)',
+            glow: '0 0 35px rgba(16, 185, 129, 0.35)'
+          }
+        }
+      }
+    };
+  </script>
+
+  <!-- PeerJS Library for Serverless P2P WebRTC Audio & Signaling -->
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+
+  <style>
+    /* Smooth base transitions and prevent unwanted horizontal overflow */
+    html, body {
+      overflow-x: hidden;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    /* Call screen pulsing sonar rings */
+    @keyframes callRipple {
+      0% {
+        transform: scale(0.95);
+        opacity: 0.75;
+      }
+      70% {
+        transform: scale(1.55);
+        opacity: 0;
+      }
+      100% {
+        transform: scale(1.6);
+        opacity: 0;
+      }
+    }
+
+    .ripple-ring {
+      animation: callRipple 2.2s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+    }
+    .ripple-ring-delay {
+      animation: callRipple 2.2s cubic-bezier(0.215, 0.61, 0.355, 1) infinite 0.75s;
+    }
+
+    /* Custom subtle scrollbar */
+    .clean-scroll::-webkit-scrollbar {
+      width: 5px;
+    }
+    .clean-scroll::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    .clean-scroll::-webkit-scrollbar-thumb {
+      background: rgba(148, 163, 184, 0.35);
+      border-radius: 9999px;
+    }
+
+    /* Voice visualizer bar smooth transition */
+    .viz-bar {
+      transition: height 80ms ease-out;
+    }
+
+    /* Tactile dialpad press effect */
+    .dial-key:active {
+      transform: scale(0.94);
+    }
+
+    /* Fade-in animation for cards & modals */
+    @keyframes fadeUp {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+    .animate-fade-up {
+      animation: fadeUp 0.25s ease-out forwards;
+    }
+  </style>
+</head>
+
+<body class="bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-slate-100 min-h-screen flex items-center justify-center sm:p-4 transition-colors duration-300">
+
+  <!-- Hidden HTML5 Audio element for reliable remote WebRTC audio playback -->
+  <audio id="remoteAudio" autoplay playsinline></audio>
+
+  <!-- Main Responsive App Shell (Full screen on mobile, sleek native-app frame on desktop) -->
+  <div id="appShell" class="relative w-full sm:max-w-[440px] min-h-screen sm:min-h-[760px] sm:max-h-[860px] bg-white dark:bg-slate-900 sm:rounded-[32px] sm:shadow-2xl sm:border border-slate-200/80 dark:border-slate-800 flex flex-col overflow-hidden transition-colors duration-300">
+
+    <!-- =====================================================================
+         VIEW 1: LOGIN / REGISTRATION SCREEN (Mobile Number Onboarding)
+    ====================================================================== -->
+    <section id="loginView" class="flex-1 flex flex-col justify-between p-6 sm:p-8 overflow-y-auto clean-scroll">
+      <!-- Top Theme Switch -->
+      <div class="flex items-center justify-between">
+        <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-brand-50 dark:bg-brand-900/30 text-brand-700 dark:text-brand-400 text-xs font-semibold">
+          <span class="w-2 h-2 rounded-full bg-brand-500 animate-pulse"></span>
+          ডাটাবেস ফ্রি • HD ভয়েস
+        </div>
+        <button id="loginThemeBtn" type="button" aria-label="থিম পরিবর্তন করুন" class="p-2.5 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition">
+          <!-- Sun / Moon Icon injected dynamically -->
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
+        </button>
+      </div>
+
+      <!-- Brand Identity & Form -->
+      <div class="my-auto py-8">
+        <div class="w-16 h-16 rounded-3xl bg-gradient-to-br from-brand-400 to-brand-600 shadow-glow flex items-center justify-center mb-6">
+          <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 6.75c0 8.284 6.716 15 15 15h2.25a2.25 2.25 0 002.25-2.25v-1.372c0-.516-.351-.966-.852-1.091l-4.423-1.106c-.44-.11-.902.055-1.173.417l-.97 1.293c-.282.376-.769.542-1.21.38a12.035 12.035 0 01-7.143-7.143c-.162-.441.004-.928.38-1.21l1.293-.97c.363-.271.527-.734.417-1.173L6.963 3.102a1.125 1.125 0 00-1.091-.852H4.5A2.25 2.25 0 002.25 4.5v2.25z" />
+          </svg>
+        </div>
+
+        <h1 class="text-3xl font-bold tracking-tight text-slate-900 dark:text-white mb-2">
+          কথা <span class="text-brand-500">.</span>
+        </h1>
+        <p class="text-slate-500 dark:text-slate-400 text-sm leading-relaxed mb-8">
+          আপনার মোবাইল নাম্বার দিয়ে এক ক্লিকেই শুরু করুন। বন্ধুর নাম্বার সার্চ করেই সরাসরি স্পষ্ট HD অডিও কলে কথা বলুন।
+        </p>
+
+        <form id="loginForm" class="space-y-4">
+          <!-- Display Name Input -->
+          <div>
+            <label for="loginNameInput" class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1.5 ml-1">
+              আপনার নাম
+            </label>
+            <input
+              id="loginNameInput"
+              type="text"
+              maxlength="30"
+              required
+              placeholder="যেমন: রাফি আহমেদ"
+              class="w-full px-4 py-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/40 focus:border-brand-500 transition text-sm font-medium"
+            />
+          </div>
+
+          <!-- Mobile Number Input -->
+          <div>
+            <label for="loginPhoneInput" class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1.5 ml-1">
+              আপনার মোবাইল নাম্বার
+            </label>
+            <div class="relative flex items-center">
+              <span class="absolute left-4 text-sm font-semibold text-slate-400 font-mono select-none">+88</span>
+              <input
+                id="loginPhoneInput"
+                type="tel"
+                inputmode="tel"
+                required
+                placeholder="017XXXXXXXX"
+                class="w-full pl-14 pr-4 py-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/40 focus:border-brand-500 transition text-base font-mono tracking-wide"
+              />
+            </div>
+            <p class="text-[11px] text-slate-400 mt-1.5 ml-1">
+              এই নাম্বারটিই আপনার কলিং আইডি হিসেবে কাজ করবে।
+            </p>
+          </div>
+
+          <!-- Submit Button -->
+          <button
+            id="loginSubmitBtn"
+            type="submit"
+            class="w-full mt-2 py-3.5 px-6 rounded-2xl bg-gradient-to-r from-brand-500 to-brand-600 hover:from-brand-600 hover:to-brand-700 text-white font-semibold text-base shadow-lg shadow-brand-500/25 active:scale-[0.98] transition flex items-center justify-center gap-2"
+          >
+            <span id="loginBtnText">শুরু করুন</span>
+            <svg id="loginBtnIcon" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+            </svg>
+            <svg id="loginSpinner" class="hidden w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+            </svg>
+          </button>
+        </form>
+      </div>
+
+      <!-- Audio Clarity Feature Pills -->
+      <div class="grid grid-cols-3 gap-2 pt-4 border-t border-slate-100 dark:border-slate-800/80 text-center">
+        <div class="p-2.5 rounded-2xl bg-slate-50 dark:bg-slate-800/50">
+          <div class="text-brand-500 font-bold text-xs mb-0.5">48kHz HD</div>
+          <div class="text-[11px] text-slate-500 dark:text-slate-400">স্বচ্ছ অডিও</div>
+        </div>
+        <div class="p-2.5 rounded-2xl bg-slate-50 dark:bg-slate-800/50">
+          <div class="text-brand-500 font-bold text-xs mb-0.5">নয়েজ ফ্রি</div>
+          <div class="text-[11px] text-slate-500 dark:text-slate-400">ইকো ক্যান্সেল</div>
+        </div>
+        <div class="p-2.5 rounded-2xl bg-slate-50 dark:bg-slate-800/50">
+          <div class="text-brand-500 font-bold text-xs mb-0.5">P2P ফ্রি</div>
+          <div class="text-[11px] text-slate-500 dark:text-slate-400">সরাসরি কল</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =====================================================================
+         VIEW 2: MAIN APP DASHBOARD (Search, Recents, Contacts, Dialpad)
+    ====================================================================== -->
+    <section id="mainView" class="hidden flex-1 flex flex-col h-full overflow-hidden">
+
+      <!-- Top App Bar -->
+      <header class="px-5 pt-5 pb-3 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800/80 shrink-0">
+        <div class="flex items-center justify-between gap-2 mb-3.5">
+          <!-- User Identity Badge -->
+          <div class="flex items-center gap-3 min-w-0">
+            <div class="relative shrink-0">
+              <div id="myAvatar" class="w-11 h-11 rounded-2xl bg-gradient-to-br from-brand-400 to-brand-600 text-white font-bold flex items-center justify-center text-base shadow-sm">
+                ক
+              </div>
+              <span id="statusDot" class="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-white dark:border-slate-900 transition-colors"></span>
+            </div>
+            <div class="min-w-0">
+              <div class="flex items-center gap-1.5">
+                <h2 id="myNameLabel" class="font-bold text-slate-900 dark:text-white text-sm truncate">ইউজার</h2>
+                <span id="statusTextBadge" class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 shrink-0">অনলাইন</span>
+              </div>
+              <button id="copyMyNumberBtn" type="button" title="নিজের নাম্বার কপি করুন" class="group inline-flex items-center gap-1 text-xs font-mono text-slate-500 dark:text-slate-400 hover:text-brand-600 dark:hover:text-brand-400 transition mt-0.5">
+                <span id="myNumberLabel">01700-000000</span>
+                <svg class="w-3.5 h-3.5 opacity-60 group-hover:opacity-100" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Action Icons -->
+          <div class="flex items-center gap-1.5 shrink-0">
+            <button id="helpBtn" type="button" title="কিভাবে ব্যবহার করবেন" class="p-2.5 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
+              </svg>
+            </button>
+            <button id="mainThemeBtn" type="button" title="থিম পরিবর্তন" class="p-2.5 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
+            </button>
+            <button id="logoutBtn" type="button" title="লগআউট" class="p-2.5 rounded-2xl bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-950/70 transition">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Instant Mobile Number Search Form -->
+        <form id="searchForm" class="relative flex items-center gap-2">
+          <div class="relative flex-1">
+            <svg class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+            </svg>
+            <input
+              id="searchNumberInput"
+              type="tel"
+              inputmode="tel"
+              placeholder="বন্ধুর মোবাইল নাম্বার সার্চ করুন..."
+              class="w-full pl-10 pr-9 py-3 rounded-2xl bg-slate-100 dark:bg-slate-800/90 text-sm font-mono text-slate-900 dark:text-white placeholder-slate-400 placeholder:font-sans focus:outline-none focus:ring-2 focus:ring-brand-500/40 transition"
+            />
+            <button id="clearSearchBtn" type="button" class="hidden absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+          </div>
+          <button
+            id="searchSubmitBtn"
+            type="submit"
+            class="px-4 py-3 rounded-2xl bg-brand-500 hover:bg-brand-600 text-white text-sm font-semibold shadow-sm shadow-brand-500/20 active:scale-95 transition shrink-0"
+          >
+            খুঁজুন
+          </button>
+        </form>
+      </header>
+
+      <!-- Live Search Result Container (Dynamically Shown) -->
+      <div id="searchResultBox" class="hidden px-5 pt-3 shrink-0"></div>
+
+      <!-- Segmented Navigation Tabs -->
+      <div class="px-5 pt-3 pb-2 shrink-0">
+        <div class="grid grid-cols-3 p-1 rounded-2xl bg-slate-100 dark:bg-slate-800/80 text-xs font-semibold">
+          <button data-tab="recents" class="tab-btn py-2.5 rounded-xl bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm transition">
+            সাম্প্রতিক
+          </button>
+          <button data-tab="contacts" class="tab-btn py-2.5 rounded-xl text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition">
+            কন্টাক্টস
+          </button>
+          <button data-tab="dialpad" class="tab-btn py-2.5 rounded-xl text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition">
+            ডায়ালপ্যাড
+          </button>
+        </div>
+      </div>
+
+      <!-- Scrollable Tab Content Area -->
+      <main class="flex-1 overflow-y-auto clean-scroll px-5 pb-6">
+
+        <!-- TAB 1: RECENTS -->
+        <div id="tab-recents" class="tab-panel pt-2 space-y-2">
+          <div class="flex items-center justify-between px-1 mb-1">
+            <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">কল হিস্ট্রি</span>
+            <button id="clearHistoryBtn" type="button" class="hidden text-xs font-medium text-rose-500 hover:text-rose-600 transition">সব মুছুন</button>
+          </div>
+          <div id="recentsList" class="space-y-2"></div>
+        </div>
+
+        <!-- TAB 2: SAVED CONTACTS -->
+        <div id="tab-contacts" class="tab-panel hidden pt-2 space-y-2">
+          <div class="flex items-center justify-between px-1 mb-1">
+            <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">সেভ করা বন্ধু</span>
+            <button id="openAddContactBtn" type="button" class="text-xs font-semibold text-brand-600 dark:text-brand-400 hover:underline">+ নতুন যোগ করুন</button>
+          </div>
+          <div id="contactsList" class="space-y-2"></div>
+        </div>
+
+        <!-- TAB 3: TACTILE DIALPAD -->
+        <div id="tab-dialpad" class="tab-panel hidden pt-3 flex flex-col items-center justify-between h-full">
+          <!-- Dial Display -->
+          <div class="w-full mb-4 px-3 py-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 flex items-center justify-between min-h-[56px]">
+            <div id="dialDisplay" class="flex-1 text-center text-2xl font-mono font-semibold tracking-wider text-slate-900 dark:text-white overflow-hidden text-ellipsis whitespace-nowrap">
+              <span class="text-slate-300 dark:text-slate-600 text-base font-sans font-normal">নাম্বার ডায়াল করুন</span>
+            </div>
+            <button id="dialBackspaceBtn" type="button" aria-label="মুছুন" class="hidden p-2 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-700 transition">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 9.75L14.25 12m0 0l2.25 2.25M14.25 12l2.25-2.25M14.25 12L12 14.25m-2.58 4.92l-6.375-6.375a1.125 1.125 0 010-1.59L9.42 4.83c.211-.211.498-.33.796-.33H19.5a2.25 2.25 0 012.25 2.25v10.5a2.25 2.25 0 01-2.25 2.25h-9.284c-.298 0-.585-.119-.796-.33z" />
+              </svg>
+            </button>
+          </div>
+
+          <!-- Numeric Grid -->
+          <div class="grid grid-cols-3 gap-3 w-full max-w-[290px] mb-5">
+            <button type="button" data-key="1" class="dial-key h-15 py-2.5 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 flex flex-col items-center justify-center transition">
+              <span class="text-xl font-mono font-semibold">1</span>
+              <span class="text-[9px] text-slate-400 tracking-widest">&nbsp;</span>
+            </button>
+            <button type="button" data-key="2" class="dial-key h-15 py-2.5 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 flex flex-col items-center justify-center transition">
+              <span class="text-xl font-mono font-semibold">2</span>
+              <span class="text-[9px] text-slate-400 tracking-widest">ABC</span>
+            </button>
+            <button type="button" data-key="3" class="dial-key h-15 py-2.5 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 flex flex-col items-center justify-center transition">
+              <span class="text-xl font-mono font-semibold">3</span>
+              <span class="text-[9px] text-slate-400 tracking-widest">DEF</span>
+            </button>
+            <button type="button" data-key="4" class="dial-key h-15 py-2.5 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 flex flex-col items-center justify-center transition">
+              <span class="text-xl font-mono font-semibold">4</span>
+              <span class="text-[9px] text-slate-400 tracking-widest">GHI</span>
+            </button>
+            <button type="button" data-key="5" class="dial-key h-15 py-2.5 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 flex flex-col items-center justify-center transition">
+              <span class="text-xl font-mono font-semibold">5</span>
+              <span class="text-[9px] text-slate-400 tracking-widest">JKL</span>
+            </button>
+            <button type="button" data-key="6" class="dial-key h-15 py-2.5 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 flex flex-col items-center justify-center transition">
+              <span class="text-xl font-mono font-semibold">6</span>
+              <span class="text-[9px] text-slate-400 tracking-widest">MNO</span>
+            </button>
+            <button type="button" data-key="7" class="dial-key h-15 py-2.5 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 flex flex-col items-center justify-center transition">
+              <span class="text-xl font-mono font-semibold">7</span>
+              <span class="text-[9px] text-slate-400 tracking-widest">PQRS</span>
+            </button>
+            <button type="button" data-key="8" class="dial-key h-15 py-2.5 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 flex flex-col items-center justify-center transition">
+              <span class="text-xl font-mono font-semibold">8</span>
+              <span class="text-[9px] text-slate-400 tracking-widest">TUV</span>
+            </button>
+            <button type="button" data-key="9" class="dial-key h-15 py-2.5 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 flex flex-col items-center justify-center transition">
+              <span class="text-xl font-mono font-semibold">9</span>
+              <span class="text-[9px] text-slate-400 tracking-widest">WXYZ</span>
+            </button>
+            <button type="button" data-key="+" class="dial-key h-15 py-2.5 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 flex items-center justify-center text-xl font-mono font-semibold transition">+</button>
+            <button type="button" data-key="0" class="dial-key h-15 py-2.5 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 flex items-center justify-center text-xl font-mono font-semibold transition">0</button>
+            <button type="button" id="dialSearchBtn" title="আইডি খুঁজুন" class="dial-key h-15 py-2.5 rounded-2xl bg-brand-50 dark:bg-brand-900/30 text-brand-600 dark:text-brand-400 hover:bg-brand-100 dark:hover:bg-brand-900/50 flex items-center justify-center transition">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+              </svg>
+            </button>
+          </div>
+
+          <!-- Big Green Call Button -->
+          <button id="dialCallBtn" type="button" class="w-16 h-16 rounded-full bg-gradient-to-br from-brand-400 to-brand-600 hover:from-brand-500 hover:to-brand-700 text-white shadow-glow flex items-center justify-center active:scale-95 transition">
+            <svg class="w-7 h-7" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 6.75c0 8.284 6.716 15 15 15h2.25a2.25 2.25 0 002.25-2.25v-1.372c0-.516-.351-.966-.852-1.091l-4.423-1.106c-.44-.11-.902.055-1.173.417l-.97 1.293c-.282.376-.769.542-1.21.38a12.035 12.035 0 01-7.143-7.143c-.162-.441.004-.928.38-1.21l1.293-.97c.363-.271.527-.734.417-1.173L6.963 3.102a1.125 1.125 0 00-1.091-.852H4.5A2.25 2.25 0 002.25 4.5v2.25z" />
+            </svg>
+          </button>
+        </div>
+      </main>
+    </section>
+
+    <!-- =====================================================================
+         OVERLAY 3: FULLSCREEN AUDIO CALL INTERFACE (Outgoing / Incoming / Active)
+    ====================================================================== -->
+    <section id="callOverlay" class="hidden absolute inset-0 z-40 bg-gradient-to-b from-slate-900 via-slate-900 to-emerald-950 text-white flex flex-col justify-between p-7 sm:p-8 select-none">
+
+      <!-- Top Encryption & Audio Quality Pill -->
+      <div class="flex flex-col items-center gap-2 pt-2">
+        <div class="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-white/10 backdrop-blur-md text-[11px] font-medium text-emerald-300 border border-white/10">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+          </svg>
+          <span>HD অডিও • সরাসরি এনক্রিপ্টেড</span>
+        </div>
+        <div id="callQualityTag" class="text-[11px] text-slate-400 h-4"></div>
+      </div>
+
+      <!-- Center Caller Avatar, Ripples & Live Voice Visualizer -->
+      <div class="flex flex-col items-center text-center my-auto">
+        <div class="relative flex items-center justify-center mb-7">
+          <!-- Sonar rings shown while ringing/calling -->
+          <div id="callRipple1" class="ripple-ring absolute w-32 h-32 rounded-full bg-emerald-500/25"></div>
+          <div id="callRipple2" class="ripple-ring-delay absolute w-32 h-32 rounded-full bg-emerald-400/20"></div>
+
+          <!-- Avatar Circle -->
+          <div id="callAvatar" class="relative z-10 w-28 h-28 rounded-full bg-gradient-to-br from-emerald-400 to-teal-600 flex items-center justify-center text-4xl font-bold shadow-2xl border-4 border-white/15">
+            ব
+          </div>
+        </div>
+
+        <h3 id="callPeerName" class="text-2xl font-bold tracking-tight mb-1">বন্ধু</h3>
+        <p id="callPeerNumber" class="text-sm font-mono text-slate-300 mb-3">+880 1700-000000</p>
+
+        <!-- Call Status / Timer -->
+        <div id="callStatusText" class="text-sm font-medium text-emerald-400 tracking-wide mb-5">
+          কল করা হচ্ছে...
+        </div>
+
+        <!-- Real-Time Audio Waveform Visualizer (Active during call) -->
+        <div id="voiceVisualizer" class="hidden h-10 flex items-center justify-center gap-1.5">
+          <span class="viz-bar w-1.5 bg-emerald-400 rounded-full h-2"></span>
+          <span class="viz-bar w-1.5 bg-emerald-300 rounded-full h-3"></span>
+          <span class="viz-bar w-1.5 bg-emerald-400 rounded-full h-5"></span>
+          <span class="viz-bar w-1.5 bg-teal-300 rounded-full h-7"></span>
+          <span class="viz-bar w-1.5 bg-emerald-400 rounded-full h-4"></span>
+          <span class="viz-bar w-1.5 bg-emerald-300 rounded-full h-6"></span>
+          <span class="viz-bar w-1.5 bg-emerald-400 rounded-full h-3"></span>
+          <span class="viz-bar w-1.5 bg-teal-300 rounded-full h-2"></span>
+        </div>
+      </div>
+
+      <!-- Bottom Call Controls -->
+      <div class="pb-4">
+        <!-- Incoming Call Buttons (Accept / Decline) -->
+        <div id="incomingControls" class="hidden flex items-center justify-around max-w-[280px] mx-auto">
+          <div class="flex flex-col items-center gap-2">
+            <button id="declineCallBtn" type="button" class="w-16 h-16 rounded-full bg-rose-500 hover:bg-rose-600 text-white shadow-lg shadow-rose-500/30 flex items-center justify-center active:scale-95 transition">
+              <svg class="w-7 h-7 rotate-[135deg]" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M2.25 6.75c0 8.284 6.716 15 15 15h2.25a2.25 2.25 0 002.25-2.25v-1.372c0-.516-.351-.966-.852-1.091l-4.423-1.106c-.44-.11-.902.055-1.173.417l-.97 1.293c-.282.376-.769.542-1.21.38a12.035 12.035 0 01-7.143-7.143c-.162-.441.004-.928.38-1.21l1.293-.97c.363-.271.527-.734.417-1.173L6.963 3.102a1.125 1.125 0 00-1.091-.852H4.5A2.25 2.25 0 002.25 4.5v2.25z" />
+              </svg>
+            </button>
+            <span class="text-xs text-slate-300 font-medium">কেটে দিন</span>
+          </div>
+
+          <div class="flex flex-col items-center gap-2">
+            <button id="acceptCallBtn" type="button" class="w-16 h-16 rounded-full bg-emerald-500 hover:bg-emerald-600 text-white shadow-lg shadow-emerald-500/35 flex items-center justify-center active:scale-95 transition animate-bounce">
+              <svg class="w-7 h-7" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M2.25 6.75c0 8.284 6.716 15 15 15h2.25a2.25 2.25 0 002.25-2.25v-1.372c0-.516-.351-.966-.852-1.091l-4.423-1.106c-.44-.11-.902.055-1.173.417l-.97 1.293c-.282.376-.769.542-1.21.38a12.035 12.035 0 01-7.143-7.143c-.162-.441.004-.928.38-1.21l1.293-.97c.363-.271.527-.734.417-1.173L6.963 3.102a1.125 1.125 0 00-1.091-.852H4.5A2.25 2.25 0 002.25 4.5v2.25z" />
+              </svg>
+            </button>
+            <span class="text-xs text-emerald-300 font-medium">রিসিভ করুন</span>
+          </div>
+        </div>
+
+        <!-- Active / Outgoing Call Controls -->
+        <div id="activeControls" class="hidden flex flex-col items-center gap-6">
+          <div class="flex items-center justify-center gap-6">
+            <!-- Mute Button -->
+            <div class="flex flex-col items-center gap-1.5">
+              <button id="muteBtn" type="button" class="w-14 h-14 rounded-2xl bg-white/10 hover:bg-white/20 backdrop-blur-md flex items-center justify-center transition">
+                <svg id="micOnIcon" class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
+                </svg>
+                <svg id="micOffIcon" class="hidden w-6 h-6 text-rose-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M19 19L5 5m7 13.75a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M15 9.34V4.5a3 3 0 00-5.46-1.72" />
+                </svg>
+              </button>
+              <span id="muteLabel" class="text-[11px] text-slate-300">মিউট</span>
+            </div>
+
+            <!-- Audio Output / Volume Toggle -->
+            <div class="flex flex-col items-center gap-1.5">
+              <button id="speakerBtn" type="button" class="w-14 h-14 rounded-2xl bg-white/10 hover:bg-white/20 backdrop-blur-md flex items-center justify-center transition">
+                <svg id="speakerOnIcon" class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z" />
+                </svg>
+                <svg id="speakerOffIcon" class="hidden w-6 h-6 text-amber-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M17.25 9.75L19.5 12m0 0l2.25 2.25M19.5 12l2.25-2.25M19.5 12l-2.25 2.25m-10.5-6l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z" />
+                </svg>
+              </button>
+              <span id="speakerLabel" class="text-[11px] text-slate-300">স্পিকার চালু</span>
+            </div>
+          </div>
+
+          <!-- End Call Button -->
+          <button id="endCallBtn" type="button" class="w-16 h-16 rounded-full bg-rose-500 hover:bg-rose-600 text-white shadow-lg shadow-rose-500/35 flex items-center justify-center active:scale-95 transition">
+            <svg class="w-7 h-7 rotate-[135deg]" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M2.25 6.75c0 8.284 6.716 15 15 15h2.25a2.25 2.25 0 002.25-2.25v-1.372c0-.516-.351-.966-.852-1.091l-4.423-1.106c-.44-.11-.902.055-1.173.417l-.97 1.293c-.282.376-.769.542-1.21.38a12.035 12.035 0 01-7.143-7.143c-.162-.441.004-.928.38-1.21l1.293-.97c.363-.271.527-.734.417-1.173L6.963 3.102a1.125 1.125 0 00-1.091-.852H4.5A2.25 2.25 0 002.25 4.5v2.25z" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- =====================================================================
+         CUSTOM MODAL: ADD CONTACT / HELP / CONFIRMATION (Zero alert/confirm)
+    ====================================================================== -->
+    <div id="modalBackdrop" class="hidden absolute inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-5">
+      <div id="modalCard" class="w-full max-w-[360px] bg-white dark:bg-slate-900 rounded-3xl p-6 shadow-2xl border border-slate-200 dark:border-slate-800 animate-fade-up">
+        <!-- Dynamic modal content injected here -->
+      </div>
+    </div>
+
+    <!-- Floating Toast Notification -->
+    <div id="toastContainer" class="pointer-events-none absolute top-4 left-4 right-4 z-50 flex flex-col items-center gap-2"></div>
+
+  </div>
+
+  <!-- =========================================================================
+       COMPLETE APPLICATION LOGIC
+       Architecture:
+       1. PhoneUtils    -> Normalizes BD/International mobile numbers to Peer IDs
+       2. SoundEngine   -> Web Audio API synthesized ringtones, ringback & DTMF
+       3. AudioManager  -> HD 48kHz WebRTC microphone capture + voice visualizer
+       4. PeerEngine    -> Serverless WebRTC (PeerJS) lookup, signaling & calling
+       5. AppController -> State, LocalStorage persistence & clean UI binding
+  ========================================================================== -->
+  <script>
+    (() => {
+      'use strict';
+
+      /* =====================================================================
+         CONSTANTS & APPLICATION STATE
+      ====================================================================== */
+      const PEER_PREFIX = 'kotha-hd-audio-v1-';
+      const STORAGE_KEYS = {
+        PROFILE: 'kotha_profile_v1',
+        CONTACTS: 'kotha_contacts_v1',
+        RECENTS: 'kotha_recents_v1',
+        THEME: 'kotha_theme_v1'
+      };
+
+      const ICE_SERVERS = [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' },
+        { urls: 'stun:stun3.l.google.com:19302' },
+        { urls: 'stun:stun4.l.google.com:19302' }
+      ];
+
+      const state = {
+        profile: null,        // { name, rawNumber, normalized, peerId }
+        contacts: [],         // [{ name, normalized, formatted }]
+        recents: [],          // [{ name, normalized, formatted, type, duration, timestamp }]
+        peer: null,
+        isOnline: false,
+        dialValue: '',
+        activeCall: null,     // { direction, peerId, normalized, name, mediaConn, controlConn, startTime, status }
+        timerInterval: null,
+        statsInterval: null,
+        callTimeout: null
+      };
+
+      /* =====================================================================
+         DOM ELEMENTS CACHE
+      ====================================================================== */
+      const el = {
+        remoteAudio: document.getElementById('remoteAudio'),
+        loginView: document.getElementById('loginView'),
+        mainView: document.getElementById('mainView'),
+        callOverlay: document.getElementById('callOverlay'),
+
+        loginForm: document.getElementById('loginForm'),
+        loginNameInput: document.getElementById('loginNameInput'),
+        loginPhoneInput: document.getElementById('loginPhoneInput'),
+        loginSubmitBtn: document.getElementById('loginSubmitBtn'),
+        loginBtnText: document.getElementById('loginBtnText'),
+        loginBtnIcon: document.getElementById('loginBtnIcon'),
+        loginSpinner: document.getElementById('loginSpinner'),
+        loginThemeBtn: document.getElementById('loginThemeBtn'),
+
+        myAvatar: document.getElementById('myAvatar'),
+        myNameLabel: document.getElementById('myNameLabel'),
+        myNumberLabel: document.getElementById('myNumberLabel'),
+        statusDot: document.getElementById('statusDot'),
+        statusTextBadge: document.getElementById('statusTextBadge'),
+        copyMyNumberBtn: document.getElementById('copyMyNumberBtn'),
+        helpBtn: document.getElementById('helpBtn'),
+        mainThemeBtn: document.getElementById('mainThemeBtn'),
+        logoutBtn: document.getElementById('logoutBtn'),
+
+        searchForm: document.getElementById('searchForm'),
+        searchNumberInput: document.getElementById('searchNumberInput'),
+        clearSearchBtn: document.getElementById('clearSearchBtn'),
+        searchResultBox: document.getElementById('searchResultBox'),
+
+        tabBtns: document.querySelectorAll('.tab-btn'),
+        tabPanels: document.querySelectorAll('.tab-panel'),
+        recentsList: document.getElementById('recentsList'),
+        clearHistoryBtn: document.getElementById('clearHistoryBtn'),
+        contactsList: document.getElementById('contactsList'),
+        openAddContactBtn: document.getElementById('openAddContactBtn'),
+
+        dialDisplay: document.getElementById('dialDisplay'),
+        dialBackspaceBtn: document.getElementById('dialBackspaceBtn'),
+        dialCallBtn: document.getElementById('dialCallBtn'),
+        dialSearchBtn: document.getElementById('dialSearchBtn'),
+        dialKeys: document.querySelectorAll('.dial-key[data-key]'),
+
+        callAvatar: document.getElementById('callAvatar'),
+        callPeerName: document.getElementById('callPeerName'),
+        callPeerNumber: document.getElementById('callPeerNumber'),
+        callStatusText: document.getElementById('callStatusText'),
+        callQualityTag: document.getElementById('callQualityTag'),
+        callRipple1: document.getElementById('callRipple1'),
+        callRipple2: document.getElementById('callRipple2'),
+        voiceVisualizer: document.getElementById('voiceVisualizer'),
+        vizBars: document.querySelectorAll('.viz-bar'),
+
+        incomingControls: document.getElementById('incomingControls'),
+        activeControls: document.getElementById('activeControls'),
+        acceptCallBtn: document.getElementById('acceptCallBtn'),
+        declineCallBtn: document.getElementById('declineCallBtn'),
+        endCallBtn: document.getElementById('endCallBtn'),
+        muteBtn: document.getElementById('muteBtn'),
+        micOnIcon: document.getElementById('micOnIcon'),
+        micOffIcon: document.getElementById('micOffIcon'),
+        muteLabel: document.getElementById('muteLabel'),
+        speakerBtn: document.getElementById('speakerBtn'),
+        speakerOnIcon: document.getElementById('speakerOnIcon'),
+        speakerOffIcon: document.getElementById('speakerOffIcon'),
+        speakerLabel: document.getElementById('speakerLabel'),
+
+        modalBackdrop: document.getElementById('modalBackdrop'),
+        modalCard: document.getElementById('modalCard'),
+        toastContainer: document.getElementById('toastContainer')
+      };
+
+      /* =====================================================================
+         1. PHONE & UTILITY MODULE
+      ====================================================================== */
+      const PhoneUtils = {
+        /**
+         * Normalizes any mobile number input (e.g., 01712-345678, +8801712345678)
+         * into a clean digit-only identifier so two users always match reliably.
+         */
+        normalize(input) {
+          const digits = String(input || '').replace(/\D/g, '');
+          if (digits.length === 11 && digits.startsWith('01')) {
+            return '88' + digits; // Convert BD local 01XXXXXXXXX -> 8801XXXXXXXXX
+          }
+          if (digits.length === 10 && digits.startsWith('1')) {
+            return '880' + digits;
+          }
+          return digits;
+        },
+
+        isValid(normalized) {
+          return normalized.length >= 6 && normalized.length <= 15;
+        },
+
+        toPeerId(normalized) {
+          return `${PEER_PREFIX}${normalized}`;
+        },
+
+        formatDisplay(normalized) {
+          if (!normalized) return '';
+          if (normalized.length === 13 && normalized.startsWith('8801')) {
+            return `+880 ${normalized.slice(3, 7)}-${normalized.slice(7)}`;
+          }
+          return '+' + normalized;
+        },
+
+        getInitial(name, fallback = 'ব') {
+          const clean = String(name || '').trim();
+          return clean ? clean.charAt(0).toUpperCase() : fallback;
+        },
+
+        getAvatarGradient(seed) {
+          const gradients = [
+            'from-emerald-400 to-teal-600',
+            'from-sky-400 to-blue-600',
+            'from-violet-400 to-purple-600',
+            'from-amber-400 to-orange-600',
+            'from-rose-400 to-pink-600',
+            'from-cyan-400 to-indigo-600'
+          ];
+          let hash = 0;
+          const str = String(seed || '0');
+          for (let i = 0; i < str.length; i++) {
+            hash = str.charCodeAt(i) + ((hash << 5) - hash);
+          }
+          return gradients[Math.abs(hash) % gradients.length];
+        },
+
+        formatDuration(totalSeconds) {
+          const mins = Math.floor(totalSeconds / 60);
+          const secs = totalSeconds % 60;
+          return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+        },
+
+        formatTimeAgo(timestamp) {
+          const diffSec = Math.floor((Date.now() - timestamp) / 1000);
+          if (diffSec < 60) return 'এইমাত্র';
+          if (diffSec < 3600) return `${Math.floor(diffSec / 60)} মি. আগে`;
+          if (diffSec < 86400) return `${Math.floor(diffSec / 3600)} ঘণ্টা আগে`;
+          const date = new Date(timestamp);
+          return date.toLocaleDateString('bn-BD', { day: 'numeric', month: 'short' });
+        },
+
+        escapeHtml(str) {
+          const div = document.createElement('div');
+          div.textContent = str;
+          return div.innerHTML;
+        }
+      };
+
+      /* =====================================================================
+         2. SOUND ENGINE (Web Audio API — Zero External Audio Files!)
+      ====================================================================== */
+      const SoundEngine = {
+        ctx: null,
+        ringTimer: null,
+
+        ensureContext() {
+          if (!this.ctx) {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (AudioCtx) this.ctx = new AudioCtx();
+          }
+          if (this.ctx && this.ctx.state === 'suspended') {
+            this.ctx.resume().catch(() => {});
+          }
+          return this.ctx;
+        },
+
+        playTone(freq, duration = 0.12, gainVal = 0.08, type = 'sine', delay = 0) {
+          try {
+            const ctx = this.ensureContext();
+            if (!ctx) return;
+            const start = ctx.currentTime + delay;
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = type;
+            osc.frequency.setValueAtTime(freq, start);
+
+            gain.gain.setValueAtTime(0.001, start);
+            gain.gain.exponentialRampToValueAtTime(gainVal, start + 0.015);
+            gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start(start);
+            osc.stop(start + duration + 0.02);
+          } catch (err) {
+            // Silently ignore autoplay restriction until user gesture
+          }
+        },
+
+        playDTMF(key) {
+          const map = {
+            '1': [697, 1209], '2': [697, 1336], '3': [697, 1477],
+            '4': [770, 1209], '5': [770, 1336], '6': [770, 1477],
+            '7': [852, 1209], '8': [852, 1336], '9': [852, 1477],
+            '0': [941, 1336], '+': [941, 1209]
+          };
+          const freqs = map[key];
+          if (freqs) {
+            this.playTone(freqs[0], 0.09, 0.04, 'sine');
+            this.playTone(freqs[1], 0.09, 0.04, 'sine');
+          }
+        },
+
+        startIncomingRing() {
+          this.stopRinging();
+          const playChime = () => {
+            // Pleasant melodic ringtone
+            this.playTone(587.33, 0.22, 0.09, 'sine', 0);      // D5
+            this.playTone(783.99, 0.22, 0.09, 'sine', 0.16);   // G5
+            this.playTone(987.77, 0.28, 0.09, 'sine', 0.32);   // B5
+            this.playTone(1174.66, 0.35, 0.08, 'sine', 0.48);  // D6
+          };
+          playChime();
+          this.ringTimer = setInterval(playChime, 2100);
+        },
+
+        startOutgoingRingback() {
+          this.stopRinging();
+          const playRingback = () => {
+            // Standard soft telephone ringback dual-tone
+            this.playTone(440, 0.9, 0.04, 'sine', 0);
+            this.playTone(480, 0.9, 0.04, 'sine', 0);
+          };
+          playRingback();
+          this.ringTimer = setInterval(playRingback, 2800);
+        },
+
+        stopRinging() {
+          if (this.ringTimer) {
+            clearInterval(this.ringTimer);
+            this.ringTimer = null;
+          }
+        },
+
+        playConnectChime() {
+          this.playTone(523.25, 0.14, 0.06, 'sine', 0);
+          this.playTone(783.99, 0.18, 0.06, 'sine', 0.1);
+        },
+
+        playEndChime() {
+          this.playTone(440, 0.14, 0.06, 'sine', 0);
+          this.playTone(329.63, 0.22, 0.06, 'sine', 0.11);
+        }
+      };
+
+      /* =====================================================================
+         3. HD AUDIO MANAGER (48kHz Capture, Echo/Noise Control & Visualizer)
+      ====================================================================== */
+      const AudioManager = {
+        localStream: null,
+        isMuted: false,
+        isSpeakerOn: true,
+        vizCtx: null,
+        vizFrame: null,
+
+        /**
+         * Requests high-clarity microphone audio with Echo Cancellation,
+         * Noise Suppression, and Auto Gain Control enabled.
+         */
+        async getHDMicrophoneStream() {
+          if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            throw new Error('আপনার ব্রাউজারে মাইক্রোফোন অডিও সাপোর্ট করে না। অনুগ্রহ করে HTTPS বা আধুনিক ব্রাউজার ব্যবহার করুন।');
+          }
+
+          const hdConstraints = {
+            audio: {
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true,
+              channelCount: 1,
+              sampleRate: 48000,
+              sampleSize: 16
+            },
+            video: false
+          };
+
+          try {
+            this.localStream = await navigator.mediaDevices.getUserMedia(hdConstraints);
+          } catch (firstErr) {
+            // Graceful fallback for older mobile hardware that rejects strict sampleRate
+            try {
+              this.localStream = await navigator.mediaDevices.getUserMedia({
+                audio: {
+                  echoCancellation: true,
+                  noiseSuppression: true,
+                  autoGainControl: true
+                },
+                video: false
+              });
+            } catch (secondErr) {
+              throw new Error('মাইক্রোফোন ব্যবহারের অনুমতি পাওয়া যায়নি। ব্রাউজার সেটিংস থেকে Microphone Allow করে আবার চেষ্টা করুন।');
+            }
+          }
+
+          this.isMuted = false;
+          this.updateMuteUI();
+          return this.localStream;
+        },
+
+        /**
+         * Attaches the remote WebRTC audio stream directly to <audio> element
+         * for rock-solid playback, and taps an AnalyserNode for the live voice bars.
+         */
+        attachRemoteStream(stream) {
+          el.remoteAudio.srcObject = stream;
+          el.remoteAudio.muted = !this.isSpeakerOn;
+          el.remoteAudio.volume = 1.0;
+          el.remoteAudio.play().catch((err) => {
+            console.warn('Autoplay note:', err);
+          });
+          this.startVisualizer(stream);
+        },
+
+        startVisualizer(stream) {
+          this.stopVisualizer();
+          try {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (!AudioCtx) return;
+
+            this.vizCtx = new AudioCtx();
+            const source = this.vizCtx.createMediaStreamSource(stream);
+            const analyser = this.vizCtx.createAnalyser();
+            analyser.fftSize = 64;
+            analyser.smoothingTimeConstant = 0.78;
+            // Note: Do NOT connect analyser to vizCtx.destination to avoid double audio
+            source.connect(analyser);
+
+            const dataArray = new Uint8Array(analyser.frequencyBinCount);
+            el.voiceVisualizer.classList.remove('hidden');
+
+            const draw = () => {
+              this.vizFrame = requestAnimationFrame(draw);
+              analyser.getByteFrequencyData(dataArray);
+
+              el.vizBars.forEach((bar, idx) => {
+                const value = dataArray[(idx + 1) * 2] || 0;
+                const heightPx = Math.max(6, Math.min(38, Math.round((value / 255) * 38)));
+                bar.style.height = `${heightPx}px`;
+              });
+            };
+            draw();
+          } catch (err) {
+            console.warn('Visualizer fallback:', err);
+          }
+        },
+
+        stopVisualizer() {
+          if (this.vizFrame) {
+            cancelAnimationFrame(this.vizFrame);
+            this.vizFrame = null;
+          }
+          if (this.vizCtx) {
+            this.vizCtx.close().catch(() => {});
+            this.vizCtx = null;
+          }
+          el.voiceVisualizer.classList.add('hidden');
+        },
+
+        toggleMute() {
+          if (!this.localStream) return;
+          this.isMuted = !this.isMuted;
+          this.localStream.getAudioTracks().forEach((track) => {
+            track.enabled = !this.isMuted;
+          });
+          this.updateMuteUI();
+        },
+
+        updateMuteUI() {
+          if (this.isMuted) {
+            el.micOnIcon.classList.add('hidden');
+            el.micOffIcon.classList.remove('hidden');
+            el.muteBtn.classList.add('bg-rose-500/25', 'ring-1', 'ring-rose-400/50');
+            el.muteLabel.textContent = 'মিউট চালু';
+          } else {
+            el.micOnIcon.classList.remove('hidden');
+            el.micOffIcon.classList.add('hidden');
+            el.muteBtn.classList.remove('bg-rose-500/25', 'ring-1', 'ring-rose-400/50');
+            el.muteLabel.textContent = 'মিউট';
+          }
+        },
+
+        toggleSpeaker() {
+          this.isSpeakerOn = !this.isSpeakerOn;
+          el.remoteAudio.muted = !this.isSpeakerOn;
+          if (this.isSpeakerOn) {
+            el.speakerOnIcon.classList.remove('hidden');
+            el.speakerOffIcon.classList.add('hidden');
+            el.speakerBtn.classList.remove('bg-amber-500/25', 'ring-1', 'ring-amber-400/50');
+            el.speakerLabel.textContent = 'স্পিকার চালু';
+          } else {
+            el.speakerOnIcon.classList.add('hidden');
+            el.speakerOffIcon.classList.remove('hidden');
+            el.speakerBtn.classList.add('bg-amber-500/25', 'ring-1', 'ring-amber-400/50');
+            el.speakerLabel.textContent = 'সাউন্ড বন্ধ';
+          }
+        },
+
+        cleanup() {
+          this.stopVisualizer();
+          if (this.localStream) {
+            this.localStream.getTracks().forEach((track) => track.stop());
+            this.localStream = null;
+          }
+          el.remoteAudio.srcObject = null;
+          this.isMuted = false;
+          this.isSpeakerOn = true;
+          this.updateMuteUI();
+          el.speakerOnIcon.classList.remove('hidden');
+          el.speakerOffIcon.classList.add('hidden');
+          el.speakerBtn.classList.remove('bg-amber-500/25', 'ring-1', 'ring-amber-400/50');
+          el.speakerLabel.textContent = 'স্পিকার চালু';
+        }
+      };
+
+      /* =====================================================================
+         4. STORAGE & UI HELPER MODULE
+      ====================================================================== */
+      const Storage = {
+        load() {
+          try {
+            const p = localStorage.getItem(STORAGE_KEYS.PROFILE);
+            const c = localStorage.getItem(STORAGE_KEYS.CONTACTS);
+            const r = localStorage.getItem(STORAGE_KEYS.RECENTS);
+            state.profile = p ? JSON.parse(p) : null;
+            state.contacts = c ? JSON.parse(c) : [];
+            state.recents = r ? JSON.parse(r) : [];
+          } catch (e) {
+            state.profile = null;
+            state.contacts = [];
+            state.recents = [];
+          }
+        },
+        saveProfile() {
+          try {
+            if (state.profile) {
+              localStorage.setItem(STORAGE_KEYS.PROFILE, JSON.stringify(state.profile));
+            } else {
+              localStorage.removeItem(STORAGE_KEYS.PROFILE);
+            }
+          } catch (e) {}
+        },
+        saveContacts() {
+          try {
+            localStorage.setItem(STORAGE_KEYS.CONTACTS, JSON.stringify(state.contacts));
+          } catch (e) {}
+        },
+        saveRecents() {
+          try {
+            localStorage.setItem(STORAGE_KEYS.RECENTS, JSON.stringify(state.recents.slice(0, 40)));
+          } catch (e) {}
+        }
+      };
+
+      function showToast(message, type = 'info') {
+        const styles = {
+          info: 'bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900',
+          success: 'bg-emerald-600 text-white',
+          error: 'bg-rose-600 text-white',
+          warning: 'bg-amber-500 text-white'
+        };
+        const toast = document.createElement('div');
+        toast.className = `pointer-events-auto px-4 py-2.5 rounded-2xl text-xs font-semibold shadow-xl animate-fade-up max-w-[92%] text-center ${styles[type] || styles.info}`;
+        toast.textContent = message;
+        el.toastContainer.appendChild(toast);
+
+        setTimeout(() => {
+          toast.style.opacity = '0';
+          toast.style.transform = 'translateY(-6px)';
+          toast.style.transition = 'all 220ms ease';
+          setTimeout(() => toast.remove(), 240);
+        }, 3000);
+      }
+
+      /**
+       * Copies text reliably inside iframes using document.execCommand('copy')
+       */
+      function copyToClipboard(text, successMsg = 'কপি করা হয়েছে!') {
+        try {
+          const textarea = document.createElement('textarea');
+          textarea.value = text;
+          textarea.setAttribute('readonly', '');
+          textarea.style.position = 'fixed';
+          textarea.style.top = '-9999px';
+          document.body.appendChild(textarea);
+          textarea.select();
+          textarea.setSelectionRange(0, 99999);
+          const ok = document.execCommand('copy');
+          document.body.removeChild(textarea);
+          if (ok) {
+            showToast(successMsg, 'success');
+          } else {
+            showToast('কপি করা যায়নি, অনুগ্রহ করে ম্যানুয়ালি কপি করুন।', 'warning');
+          }
+        } catch (err) {
+          showToast('কপি করতে সমস্যা হয়েছে।', 'error');
+        }
+      }
+
+      function openModal(htmlContent) {
+        el.modalCard.innerHTML = htmlContent;
+        el.modalBackdrop.classList.remove('hidden');
+      }
+
+      function closeModal() {
+        el.modalBackdrop.classList.add('hidden');
+        el.modalCard.innerHTML = '';
+      }
+
+      /* =====================================================================
+         5. SERVERLESS WEBRTC PEER ENGINE (Lookup + HD Voice Calling)
+      ====================================================================== */
+      const PeerEngine = {
+        /**
+         * Initializes a PeerJS instance bound to the user's normalized mobile number.
+         */
+        connect(profile) {
+          return new Promise((resolve, reject) => {
+            if (typeof Peer === 'undefined') {
+              reject(new Error('কলিং লাইব্রেরি লোড হয়নি। ইন্টারনেট সংযোগ পরীক্ষা করুন।'));
+              return;
+            }
+
+            if (state.peer) {
+              try { state.peer.destroy(); } catch (e) {}
+              state.peer = null;
+            }
+
+            const peer = new Peer(profile.peerId, {
+              debug: 0,
+              config: { iceServers: ICE_SERVERS }
+            });
+
+            let settled = false;
+            const timeout = setTimeout(() => {
+              if (!settled) {
+                settled = true;
+                try { peer.destroy(); } catch (e) {}
+                reject(new Error('সার্ভারে সংযোগ করতে সময় বেশি লাগছে। আবার চেষ্টা করুন।'));
+              }
+            }, 12000);
+
+            peer.on('open', () => {
+              if (!settled) {
+                settled = true;
+                clearTimeout(timeout);
+                state.peer = peer;
+                state.isOnline = true;
+                updateConnectionBadge('online');
+                this.bindPeerEvents(peer);
+                resolve(peer);
+              }
+            });
+
+            peer.on('error', (err) => {
+              if (!settled) {
+                settled = true;
+                clearTimeout(timeout);
+                if (err.type === 'unavailable-id') {
+                  reject(new Error('এই মোবাইল নাম্বারটি বর্তমানে অন্য ট্যাব বা ডিভাইসে চালু আছে।'));
+                } else {
+                  reject(new Error('নেটওয়ার্ক সংযোগে সমস্যা হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।'));
+                }
+              } else {
+                this.handleRuntimeError(err);
+              }
+            });
+          });
+        },
+
+        bindPeerEvents(peer) {
+          // 1. Handle DataConnections (Online number lookup & instant call signals)
+          peer.on('connection', (conn) => {
+            const meta = conn.metadata || {};
+
+            // A) Instant Friend Number Lookup Request
+            if (meta.type === 'lookup') {
+              conn.on('open', () => {
+                conn.send({
+                  type: 'profile-response',
+                  name: state.profile.name,
+                  normalized: state.profile.normalized,
+                  formatted: PhoneUtils.formatDisplay(state.profile.normalized),
+                  status: state.activeCall ? 'busy' : 'available'
+                });
+                setTimeout(() => {
+                  try { conn.close(); } catch (e) {}
+                }, 400);
+              });
+              return;
+            }
+
+            // B) Call Control Signaling Channel (ringing, cancel, reject, end, busy)
+            if (meta.type === 'call-control') {
+              conn.on('data', (msg) => {
+                this.handleControlSignal(msg, conn);
+              });
+            }
+          });
+
+          // 2. Handle Incoming WebRTC Audio Call
+          peer.on('call', (incomingMediaConn) => {
+            const meta = incomingMediaConn.metadata || {};
+            const callerNormalized = meta.normalized || incomingMediaConn.peer.replace(PEER_PREFIX, '');
+            const savedContact = findContactByNumber(callerNormalized);
+            const callerName = savedContact ? savedContact.name : (meta.name || 'অজানা কলার');
+
+            // If user is already in another call, notify caller as busy
+            if (state.activeCall) {
+              this.sendOneShotSignal(incomingMediaConn.peer, { type: 'busy' });
+              incomingMediaConn.close();
+              addRecentCall(callerName, callerNormalized, 'missed', 0);
+              return;
+            }
+
+            // Register incoming call state
+            state.activeCall = {
+              direction: 'incoming',
+              peerId: incomingMediaConn.peer,
+              normalized: callerNormalized,
+              name: callerName,
+              mediaConn: incomingMediaConn,
+              controlConn: null,
+              startTime: null,
+              status: 'ringing'
+            };
+
+            // Notify caller immediately that our phone is ringing
+            this.sendOneShotSignal(incomingMediaConn.peer, {
+              type: 'ringing',
+              calleeName: state.profile.name
+            });
+
+            // Open Incoming Call UI & start ringtone
+            CallUI.showIncoming(callerName, callerNormalized);
+            SoundEngine.startIncomingRing();
+
+            incomingMediaConn.on('close', () => {
+              if (state.activeCall && state.activeCall.mediaConn === incomingMediaConn) {
+                this.finishCall('কল শেষ হয়েছে');
+              }
+            });
+
+            incomingMediaConn.on('error', () => {
+              if (state.activeCall && state.activeCall.mediaConn === incomingMediaConn) {
+                this.finishCall('সংযোগ বিচ্ছিন্ন হয়েছে');
+              }
+            });
+          });
+
+          // 3. Auto-reconnect if signaling server briefly drops
+          peer.on('disconnected', () => {
+            state.isOnline = false;
+            updateConnectionBadge('reconnecting');
+            setTimeout(() => {
+              if (state.peer && !state.peer.destroyed && state.peer.disconnected) {
+                try { state.peer.reconnect(); } catch (e) {}
+              }
+            }, 2000);
+          });
+
+          peer.on('open', () => {
+            state.isOnline = true;
+            updateConnectionBadge('online');
+          });
+        },
+
+        handleRuntimeError(err) {
+          if (err.type === 'peer-unavailable') {
+            // Handled cleanly in lookup & outgoing call timeout
+            if (state.activeCall && state.activeCall.status === 'calling') {
+              this.finishCall('বন্ধু বর্তমানে অফলাইনে আছেন', false);
+              showToast('এই নাম্বারটি বর্তমানে অফলাইনে আছে বা অ্যাপ খোলা নেই।', 'warning');
+            }
+          } else if (err.type === 'network' || err.type === 'server-error') {
+            updateConnectionBadge('offline');
+          }
+        },
+
+        /**
+         * Searches for a friend by mobile number via a lightweight P2P lookup ping.
+         * Returns { online: true, name, normalized, formatted, status } or { online: false }.
+         */
+        lookupNumber(rawInput) {
+          return new Promise((resolve) => {
+            const normalized = PhoneUtils.normalize(rawInput);
+            if (!state.peer || !state.isOnline) {
+              resolve({ online: false, reason: 'offline_self', normalized });
+              return;
+            }
+
+            const targetPeerId = PhoneUtils.toPeerId(normalized);
+            let done = false;
+            let conn = null;
+
+            const finish = (result) => {
+              if (done) return;
+              done = true;
+              clearTimeout(timer);
+              if (conn) {
+                setTimeout(() => { try { conn.close(); } catch (e) {} }, 150);
+              }
+              resolve(result);
+            };
+
+            const timer = setTimeout(() => {
+              finish({ online: false, reason: 'not_found', normalized });
+            }, 4500);
+
+            try {
+              conn = state.peer.connect(targetPeerId, {
+                reliable: true,
+                metadata: {
+                  type: 'lookup',
+                  from: state.profile.normalized
+                }
+              });
+
+              conn.on('data', (data) => {
+                if (data && data.type === 'profile-response') {
+                  finish({
+                    online: true,
+                    name: data.name || 'কথা ইউজার',
+                    normalized: data.normalized || normalized,
+                    formatted: PhoneUtils.formatDisplay(normalized),
+                    status: data.status || 'available'
+                  });
+                }
+              });
+
+              conn.on('error', () => {
+                finish({ online: false, reason: 'not_found', normalized });
+              });
+            } catch (err) {
+              finish({ online: false, reason: 'error', normalized });
+            }
+          });
+        },
+
+        /**
+         * Sends an instant control message (ringing, reject, cancel, busy, end)
+         */
+        sendOneShotSignal(targetPeerId, payload) {
+          if (!state.peer || !targetPeerId) return;
+          try {
+            const conn = state.peer.connect(targetPeerId, {
+              reliable: true,
+              metadata: { type: 'call-control' }
+            });
+            conn.on('open', () => {
+              conn.send(payload);
+              setTimeout(() => {
+                try { conn.close(); } catch (e) {}
+              }, 350);
+            });
+          } catch (e) {}
+        },
+
+        handleControlSignal(msg) {
+          if (!msg || !state.activeCall) return;
+
+          switch (msg.type) {
+            case 'ringing':
+              if (state.activeCall.direction === 'outgoing' && state.activeCall.status === 'calling') {
+                state.activeCall.status = 'ringing';
+                if (msg.calleeName && state.activeCall.name === PhoneUtils.formatDisplay(state.activeCall.normalized)) {
+                  state.activeCall.name = msg.calleeName;
+                  el.callPeerName.textContent = msg.calleeName;
+                  el.callAvatar.textContent = PhoneUtils.getInitial(msg.calleeName);
+                }
+                el.callStatusText.textContent = 'রিং হচ্ছে...';
+                SoundEngine.startOutgoingRingback();
+              }
+              break;
+
+            case 'busy':
+              if (state.activeCall.direction === 'outgoing') {
+                showToast('বন্ধু বর্তমানে অন্য কলে ব্যস্ত আছেন।', 'warning');
+                this.finishCall('ব্যস্ত আছেন', true);
+              }
+              break;
+
+            case 'reject':
+              if (state.activeCall.direction === 'outgoing') {
+                showToast('কলটি কেটে দেওয়া হয়েছে।', 'info');
+                this.finishCall('কল গ্রহণ করা হয়নি', true);
+              }
+              break;
+
+            case 'cancel':
+              if (state.activeCall.direction === 'incoming' && state.activeCall.status === 'ringing') {
+                showToast('মিসড কল এসেছে।', 'info');
+                this.finishCall('মিসড কল', true, 'missed');
+              }
+              break;
+
+            case 'end':
+              this.finishCall('কল শেষ হয়েছে', true);
+              break;
+          }
+        },
+
+        /**
+         * Places a direct HD WebRTC audio call to a target mobile number
+         */
+        async startOutgoingCall(targetNormalized, displayName) {
+          if (state.activeCall) {
+            showToast('আপনি ইতিমধ্যেই একটি কলে আছেন।', 'warning');
+            return;
+          }
+          if (!state.peer || !state.isOnline) {
+            showToast('আপনি বর্তমানে অফলাইনে আছেন। নেটওয়ার্ক চেক করুন।', 'error');
+            return;
+          }
+          if (targetNormalized === state.profile.normalized) {
+            showToast('আপনি নিজের নাম্বারে কল দিতে পারবেন না।', 'warning');
+            return;
+          }
+
+          SoundEngine.ensureContext();
+          const saved = findContactByNumber(targetNormalized);
+          const finalName = displayName || (saved ? saved.name : PhoneUtils.formatDisplay(targetNormalized));
+          const targetPeerId = PhoneUtils.toPeerId(targetNormalized);
+
+          // Acquire crisp HD microphone stream first
+          let stream;
+          try {
+            stream = await AudioManager.getHDMicrophoneStream();
+          } catch (micErr) {
+            showToast(micErr.message, 'error');
+            return;
+          }
+
+          // Initialize outgoing call state & UI
+          const mediaConn = state.peer.call(targetPeerId, stream, {
+            metadata: {
+              name: state.profile.name,
+              normalized: state.profile.normalized
+            }
+          });
+
+          if (!mediaConn) {
+            AudioManager.cleanup();
+            showToast('কল শুরু করা যায়নি। আবার চেষ্টা করুন।', 'error');
+            return;
+          }
+
+          state.activeCall = {
+            direction: 'outgoing',
+            peerId: targetPeerId,
+            normalized: targetNormalized,
+            name: finalName,
+            mediaConn,
+            startTime: null,
+            status: 'calling'
+          };
+
+          CallUI.showOutgoing(finalName, targetNormalized);
+
+          // Auto-timeout if friend doesn't answer within 35 seconds
+          clearTimeout(state.callTimeout);
+          state.callTimeout = setTimeout(() => {
+            if (state.activeCall && state.activeCall.status !== 'connected') {
+              this.sendOneShotSignal(targetPeerId, { type: 'cancel' });
+              showToast('কোনো উত্তর পাওয়া যায়নি।', 'info');
+              this.finishCall('উত্তর পাওয়া যায়নি', true);
+            }
+          }, 35000);
+
+          // When callee answers and sends their audio stream
+          mediaConn.on('stream', (remoteStream) => {
+            if (!state.activeCall || state.activeCall.mediaConn !== mediaConn) return;
+            this.onCallConnected(remoteStream);
+          });
+
+          mediaConn.on('close', () => {
+            if (state.activeCall && state.activeCall.mediaConn === mediaConn) {
+              this.finishCall('কল শেষ হয়েছে', true);
+            }
+          });
+
+          mediaConn.on('error', () => {
+            if (state.activeCall && state.activeCall.mediaConn === mediaConn) {
+              this.finishCall('সংযোগ বিচ্ছিন্ন হয়েছে', true);
+            }
+          });
+        },
+
+        /**
+         * Answers an incoming audio call
+         */
+        async acceptIncomingCall() {
+          if (!state.activeCall || state.activeCall.direction !== 'incoming') return;
+          SoundEngine.stopRinging();
+
+          let stream;
+          try {
+            stream = await AudioManager.getHDMicrophoneStream();
+          } catch (micErr) {
+            showToast(micErr.message, 'error');
+            this.declineIncomingCall();
+            return;
+          }
+
+          const mediaConn = state.activeCall.mediaConn;
+          mediaConn.answer(stream);
+          el.callStatusText.textContent = 'সংযুক্ত হচ্ছে...';
+          el.incomingControls.classList.add('hidden');
+          el.activeControls.classList.remove('hidden');
+
+          mediaConn.on('stream', (remoteStream) => {
+            if (!state.activeCall || state.activeCall.mediaConn !== mediaConn) return;
+            this.onCallConnected(remoteStream);
+          });
+        },
+
+        /**
+         * Declines an incoming call cleanly
+         */
+        declineIncomingCall() {
+          if (!state.activeCall) return;
+          const peerId = state.activeCall.peerId;
+          this.sendOneShotSignal(peerId, { type: 'reject' });
+          this.finishCall('কল কেটে দেওয়া হয়েছে', true, 'missed');
+        },
+
+        /**
+         * Ends an active or outgoing call
+         */
+        hangUpCall() {
+          if (!state.activeCall) return;
+          const { peerId, direction, status } = state.activeCall;
+          if (direction === 'outgoing' && status !== 'connected') {
+            this.sendOneShotSignal(peerId, { type: 'cancel' });
+          } else {
+            this.sendOneShotSignal(peerId, { type: 'end' });
+          }
+          this.finishCall('কল শেষ হয়েছে', true);
+        },
+
+        /**
+         * Called once WebRTC audio stream is established on both sides
+         */
+        onCallConnected(remoteStream) {
+          clearTimeout(state.callTimeout);
+          SoundEngine.stopRinging();
+          SoundEngine.playConnectChime();
+
+          state.activeCall.status = 'connected';
+          state.activeCall.startTime = Date.now();
+
+          AudioManager.attachRemoteStream(remoteStream);
+          CallUI.showActive();
+
+          // Live call duration timer
+          clearInterval(state.timerInterval);
+          state.timerInterval = setInterval(() => {
+            if (!state.activeCall || !state.activeCall.startTime) return;
+            const elapsed = Math.floor((Date.now() - state.activeCall.startTime) / 1000);
+            el.callStatusText.textContent = PhoneUtils.formatDuration(elapsed);
+          }, 1000);
+
+          // Live WebRTC audio quality & latency indicator
+          this.startQualityMonitor(state.activeCall.mediaConn);
+        },
+
+        startQualityMonitor(mediaConn) {
+          clearInterval(state.statsInterval);
+          el.callQualityTag.textContent = 'ক্রিস্টাল ক্লিয়ার HD ভয়েস সংযুক্ত';
+
+          state.statsInterval = setInterval(async () => {
+            try {
+              const pc = mediaConn && mediaConn.peerConnection;
+              if (!pc || pc.connectionState !== 'connected') return;
+              const stats = await pc.getStats();
+              let rttMs = null;
+              stats.forEach((report) => {
+                if (report.type === 'candidate-pair' && report.state === 'succeeded' && report.currentRoundTripTime != null) {
+                  rttMs = Math.round(report.currentRoundTripTime * 1000);
+                }
+              });
+              if (rttMs !== null) {
+                const label = rttMs < 120 ? 'চমৎকার সিগন্যাল' : rttMs < 260 ? 'ভালো সিগন্যাল' : 'ধীর নেটওয়ার্ক';
+                el.callQualityTag.textContent = `${label} • ${rttMs}ms লেটেন্সি`;
+              }
+            } catch (e) {}
+          }, 3000);
+        },
+
+        /**
+         * Cleans up call resources, saves to call history, and closes call screen
+         */
+        finishCall(reasonText, logHistory = true, overrideType = null) {
+          clearTimeout(state.callTimeout);
+          clearInterval(state.timerInterval);
+          clearInterval(state.statsInterval);
+          SoundEngine.stopRinging();
+
+          const call = state.activeCall;
+          state.activeCall = null;
+
+          if (call) {
+            if (call.status === 'connected') {
+              SoundEngine.playEndChime();
+            }
+            try {
+              if (call.mediaConn) call.mediaConn.close();
+            } catch (e) {}
+
+            if (logHistory) {
+              const duration = call.startTime ? Math.floor((Date.now() - call.startTime) / 1000) : 0;
+              const type = overrideType || (call.direction === 'incoming' && duration === 0 ? 'missed' : call.direction);
+              addRecentCall(call.name, call.normalized, type, duration);
+            }
+          }
+
+          AudioManager.cleanup();
+          CallUI.hide();
+        }
+      };
+
+      /* =====================================================================
+         6. CALL OVERLAY UI CONTROLLER
+      ====================================================================== */
+      const CallUI = {
+        prepareHeader(name, normalized) {
+          const gradient = PhoneUtils.getAvatarGradient(normalized);
+          el.callAvatar.className = `relative z-10 w-28 h-28 rounded-full bg-gradient-to-br ${gradient} flex items-center justify-center text-4xl font-bold shadow-2xl border-4 border-white/15`;
+          el.callAvatar.textContent = PhoneUtils.getInitial(name);
+          el.callPeerName.textContent = name;
+          el.callPeerNumber.textContent = PhoneUtils.formatDisplay(normalized);
+          el.callQualityTag.textContent = '';
+        },
+
+        showOutgoing(name, normalized) {
+          this.prepareHeader(name, normalized);
+          el.callStatusText.textContent = 'সংযোগ করা হচ্ছে...';
+          el.callRipple1.classList.remove('hidden');
+          el.callRipple2.classList.remove('hidden');
+          el.incomingControls.classList.add('hidden');
+          el.activeControls.classList.remove('hidden');
+          el.callOverlay.classList.remove('hidden');
+        },
+
+        showIncoming(name, normalized) {
+          this.prepareHeader(name, normalized);
+          el.callStatusText.textContent = 'ইনকামিং HD অডিও কল...';
+          el.callRipple1.classList.remove('hidden');
+          el.callRipple2.classList.remove('hidden');
+          el.activeControls.classList.add('hidden');
+          el.incomingControls.classList.remove('hidden');
+          el.callOverlay.classList.remove('hidden');
+        },
+
+        showActive() {
+          el.callRipple1.classList.add('hidden');
+          el.callRipple2.classList.add('hidden');
+          el.incomingControls.classList.add('hidden');
+          el.activeControls.classList.remove('hidden');
+          el.callStatusText.textContent = '00:00';
+        },
+
+        hide() {
+          el.callOverlay.classList.add('hidden');
+          el.voiceVisualizer.classList.add('hidden');
+        }
+      };
+
+      /* =====================================================================
+         7. DASHBOARD RENDERING (Contacts, Recents, Search Cards, Status)
+      ====================================================================== */
+      function updateConnectionBadge(status) {
+        if (status === 'online') {
+          el.statusDot.className = 'absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-white dark:border-slate-900';
+          el.statusTextBadge.className = 'text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 shrink-0';
+          el.statusTextBadge.textContent = 'অনলাইন';
+        } else if (status === 'reconnecting') {
+          el.statusDot.className = 'absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-amber-400 border-2 border-white dark:border-slate-900 animate-pulse';
+          el.statusTextBadge.className = 'text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 shrink-0';
+          el.statusTextBadge.textContent = 'সংযুক্ত হচ্ছে...';
+        } else {
+          el.statusDot.className = 'absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-rose-500 border-2 border-white dark:border-slate-900';
+          el.statusTextBadge.className = 'text-[10px] font-semibold px-2 py-0.5 rounded-full bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 shrink-0';
+          el.statusTextBadge.textContent = 'অফলাইন';
+        }
+      }
+
+      function findContactByNumber(normalized) {
+        return state.contacts.find((c) => c.normalized === normalized);
+      }
+
+      function saveOrUpdateContact(name, normalized) {
+        const cleanName = name.trim() || PhoneUtils.formatDisplay(normalized);
+        const existing = findContactByNumber(normalized);
+        if (existing) {
+          existing.name = cleanName;
+        } else {
+          state.contacts.unshift({
+            name: cleanName,
+            normalized,
+            formatted: PhoneUtils.formatDisplay(normalized)
+          });
+        }
+        Storage.saveContacts();
+        renderContacts();
+        showToast('কন্টাক্টে সেভ করা হয়েছে!', 'success');
+      }
+
+      function deleteContact(normalized) {
+        state.contacts = state.contacts.filter((c) => c.normalized !== normalized);
+        Storage.saveContacts();
+        renderContacts();
+        showToast('কন্টাক্ট মুছে ফেলা হয়েছে।', 'info');
+      }
+
+      function addRecentCall(name, normalized, type, duration) {
+        state.recents.unshift({
+          name,
+          normalized,
+          formatted: PhoneUtils.formatDisplay(normalized),
+          type, // 'outgoing' | 'incoming' | 'missed'
+          duration,
+          timestamp: Date.now()
+        });
+        Storage.saveRecents();
+        renderRecents();
+      }
+
+      function renderRecents() {
+        if (!state.recents.length) {
+          el.clearHistoryBtn.classList.add('hidden');
+          el.recentsList.innerHTML = `
+            <div class="py-14 px-4 text-center">
+              <div class="w-14 h-14 mx-auto mb-3 rounded-3xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400">
+                <svg class="w-7 h-7" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <p class="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1">কোনো কল হিস্ট্রি নেই</p>
+              <p class="text-xs text-slate-400 max-w-[240px] mx-auto leading-relaxed">
+                উপরের সার্চ বারে বন্ধুর মোবাইল নাম্বার লিখে খুঁজুন এবং এক ক্লিকেই অডিও কল দিন।
+              </p>
+            </div>
+          `;
+          return;
+        }
+
+        el.clearHistoryBtn.classList.remove('hidden');
+        el.recentsList.innerHTML = state.recents.map((item) => {
+          const gradient = PhoneUtils.getAvatarGradient(item.normalized);
+          const safeName = PhoneUtils.escapeHtml(item.name);
+          let typeBadge = '';
+          if (item.type === 'outgoing') {
+            typeBadge = `<span class="text-emerald-500">↗ আউটগোয়িং</span>`;
+          } else if (item.type === 'incoming') {
+            typeBadge = `<span class="text-sky-500">↙ ইনকামিং</span>`;
+          } else {
+            typeBadge = `<span class="text-rose-500">✕ মিসড কল</span>`;
+          }
+          const durText = item.duration > 0 ? ` • ${PhoneUtils.formatDuration(item.duration)}` : '';
+
+          return `
+            <div class="flex items-center justify-between gap-3 p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/50 hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+              <div class="flex items-center gap-3 min-w-0">
+                <div class="w-11 h-11 rounded-2xl bg-gradient-to-br ${gradient} text-white font-bold flex items-center justify-center text-sm shrink-0">
+                  ${PhoneUtils.escapeHtml(PhoneUtils.getInitial(item.name))}
+                </div>
+                <div class="min-w-0">
+                  <div class="font-semibold text-sm text-slate-900 dark:text-white truncate">${safeName}</div>
+                  <div class="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1.5 flex-wrap">
+                    ${typeBadge}${durText} <span>• ${PhoneUtils.formatTimeAgo(item.timestamp)}</span>
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                data-call-number="${item.normalized}"
+                data-call-name="${safeName}"
+                aria-label="কল দিন"
+                class="call-trigger-btn w-10 h-10 rounded-xl bg-brand-50 dark:bg-brand-900/30 text-brand-600 dark:text-brand-400 hover:bg-brand-500 hover:text-white flex items-center justify-center transition shrink-0"
+              >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 6.75c0 8.284 6.716 15 15 15h2.25a2.25 2.25 0 002.25-2.25v-1.372c0-.516-.351-.966-.852-1.091l-4.423-1.106c-.44-.11-.902.055-1.173.417l-.97 1.293c-.282.376-.769.542-1.21.38a12.035 12.035 0 01-7.143-7.143c-.162-.441.004-.928.38-1.21l1.293-.97c.363-.271.527-.734.417-1.173L6.963 3.102a1.125 1.125 0 00-1.091-.852H4.5A2.25 2.25 0 002.25 4.5v2.25z" />
+                </svg>
+              </button>
+            </div>
+          `;
+        }).join('');
+      }
+
+      function renderContacts() {
+        if (!state.contacts.length) {
+          el.contactsList.innerHTML = `
+            <div class="py-14 px-4 text-center">
+              <div class="w-14 h-14 mx-auto mb-3 rounded-3xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400">
+                <svg class="w-7 h-7" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
+                </svg>
+              </div>
+              <p class="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1">কোনো বন্ধু সেভ করা নেই</p>
+              <p class="text-xs text-slate-400 max-w-[240px] mx-auto leading-relaxed">
+                বন্ধুদের নাম্বার সেভ করে রাখলে পরবর্তীতে এক ট্যাপেই সরাসরি কল দিতে পারবেন।
+              </p>
+            </div>
+          `;
+          return;
+        }
+
+        el.contactsList.innerHTML = state.contacts.map((c) => {
+          const gradient = PhoneUtils.getAvatarGradient(c.normalized);
+          const safeName = PhoneUtils.escapeHtml(c.name);
+          return `
+            <div class="flex items-center justify-between gap-2 p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/50 hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+              <div class="flex items-center gap-3 min-w-0">
+                <div class="w-11 h-11 rounded-2xl bg-gradient-to-br ${gradient} text-white font-bold flex items-center justify-center text-sm shrink-0">
+                  ${PhoneUtils.escapeHtml(PhoneUtils.getInitial(c.name))}
+                </div>
+                <div class="min-w-0">
+                  <div class="font-semibold text-sm text-slate-900 dark:text-white truncate">${safeName}</div>
+                  <div class="text-xs font-mono text-slate-500 dark:text-slate-400">${PhoneUtils.escapeHtml(c.formatted)}</div>
+                </div>
+              </div>
+              <div class="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  data-search-number="${c.normalized}"
+                  title="অনলাইন চেক করুন"
+                  class="quick-check-btn p-2.5 rounded-xl bg-slate-200/70 dark:bg-slate-700/70 text-slate-600 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600 transition"
+                >
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  data-call-number="${c.normalized}"
+                  data-call-name="${safeName}"
+                  title="অডিও কল দিন"
+                  class="call-trigger-btn p-2.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white shadow-sm transition"
+                >
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 6.75c0 8.284 6.716 15 15 15h2.25a2.25 2.25 0 002.25-2.25v-1.372c0-.516-.351-.966-.852-1.091l-4.423-1.106c-.44-.11-.902.055-1.173.417l-.97 1.293c-.282.376-.769.542-1.21.38a12.035 12.035 0 01-7.143-7.143c-.162-.441.004-.928.38-1.21l1.293-.97c.363-.271.527-.734.417-1.173L6.963 3.102a1.125 1.125 0 00-1.091-.852H4.5A2.25 2.25 0 002.25 4.5v2.25z" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  data-del-contact="${c.normalized}"
+                  title="মুছে ফেলুন"
+                  class="del-contact-btn p-2.5 rounded-xl text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition"
+                >
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+
+      /**
+       * Executes an instant mobile number search and renders a rich result card
+       */
+      async function performNumberSearch(rawQuery) {
+        const normalized = PhoneUtils.normalize(rawQuery);
+        if (!PhoneUtils.isValid(normalized)) {
+          showToast('অনুগ্রহ করে একটি সঠিক মোবাইল নাম্বার লিখুন।', 'warning');
+          return;
+        }
+        if (state.profile && normalized === state.profile.normalized) {
+          showToast('এটি আপনার নিজের মোবাইল নাম্বার!', 'info');
+          return;
+        }
+
+        el.searchResultBox.classList.remove('hidden');
+        el.searchResultBox.innerHTML = `
+          <div class="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 flex items-center gap-3 animate-fade-up">
+            <svg class="w-5 h-5 text-brand-500 animate-spin shrink-0" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+            </svg>
+            <div>
+              <div class="text-xs font-semibold text-slate-800 dark:text-white">আইডি খোঁজা হচ্ছে...</div>
+              <div class="text-[11px] font-mono text-slate-400">${PhoneUtils.formatDisplay(normalized)}</div>
+            </div>
+          </div>
+        `;
+
+        const result = await PeerEngine.lookupNumber(normalized);
+
+        if (result.online) {
+          const safeName = PhoneUtils.escapeHtml(result.name);
+          const gradient = PhoneUtils.getAvatarGradient(result.normalized);
+          const isSaved = Boolean(findContactByNumber(result.normalized));
+          const isBusy = result.status === 'busy';
+
+          el.searchResultBox.innerHTML = `
+            <div class="p-4 rounded-2xl bg-emerald-50/80 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/60 animate-fade-up">
+              <div class="flex items-center justify-between gap-3 mb-3">
+                <div class="flex items-center gap-3 min-w-0">
+                  <div class="relative shrink-0">
+                    <div class="w-12 h-12 rounded-2xl bg-gradient-to-br ${gradient} text-white font-bold flex items-center justify-center text-lg shadow-sm">
+                      ${PhoneUtils.escapeHtml(PhoneUtils.getInitial(result.name))}
+                    </div>
+                    <span class="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full ${isBusy ? 'bg-amber-400' : 'bg-emerald-500'} border-2 border-white dark:border-slate-900"></span>
+                  </div>
+                  <div class="min-w-0">
+                    <div class="font-bold text-slate-900 dark:text-white text-sm truncate">${safeName}</div>
+                    <div class="text-xs font-mono text-slate-500 dark:text-slate-400">${PhoneUtils.escapeHtml(result.formatted)}</div>
+                    <div class="text-[11px] font-semibold ${isBusy ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'} mt-0.5">
+                      ${isBusy ? '● বর্তমানে অন্য কলে ব্যস্ত' : '● অনলাইন • কলের জন্য প্রস্তুত'}
+                    </div>
+                  </div>
+                </div>
+                <button id="closeSearchCardBtn" type="button" class="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+              </div>
+              <div class="flex items-center gap-2">
+                <button
+                  id="searchCallNowBtn"
+                  type="button"
+                  class="flex-1 py-2.5 px-4 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-xs font-semibold shadow-sm shadow-brand-500/25 flex items-center justify-center gap-1.5 active:scale-[0.98] transition"
+                >
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 6.75c0 8.284 6.716 15 15 15h2.25a2.25 2.25 0 002.25-2.25v-1.372c0-.516-.351-.966-.852-1.091l-4.423-1.106c-.44-.11-.902.055-1.173.417l-.97 1.293c-.282.376-.769.542-1.21.38a12.035 12.035 0 01-7.143-7.143c-.162-.441.004-.928.38-1.21l1.293-.97c.363-.271.527-.734.417-1.173L6.963 3.102a1.125 1.125 0 00-1.091-.852H4.5A2.25 2.25 0 002.25 4.5v2.25z" />
+                  </svg>
+                  HD অডিও কল দিন
+                </button>
+                ${!isSaved ? `
+                  <button
+                    id="searchSaveContactBtn"
+                    type="button"
+                    class="py-2.5 px-3.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold hover:bg-slate-50 dark:hover:bg-slate-700 transition"
+                  >
+                    সেভ করুন
+                  </button>
+                ` : ''}
+              </div>
+            </div>
+          `;
+
+          document.getElementById('searchCallNowBtn').addEventListener('click', () => {
+            PeerEngine.startOutgoingCall(result.normalized, result.name);
+          });
+          const saveBtn = document.getElementById('searchSaveContactBtn');
+          if (saveBtn) {
+            saveBtn.addEventListener('click', () => {
+              saveOrUpdateContact(result.name, result.normalized);
+              saveBtn.remove();
+            });
+          }
+          document.getElementById('closeSearchCardBtn').addEventListener('click', hideSearchResult);
+        } else {
+          el.searchResultBox.innerHTML = `
+            <div class="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 animate-fade-up">
+              <div class="flex items-start justify-between gap-2">
+                <div>
+                  <div class="text-xs font-bold text-slate-800 dark:text-white mb-0.5">
+                    আইডিটি বর্তমানে অনলাইনে নেই
+                  </div>
+                  <div class="text-[11px] font-mono text-slate-500 dark:text-slate-400 mb-1.5">
+                    ${PhoneUtils.formatDisplay(normalized)}
+                  </div>
+                  <p class="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                    আপনার বন্ধুকে এই অ্যাপটি খুলে তার নাম্বার দিয়ে লগইন থাকতে বলুন—তারপর আবার সার্চ করলেই সাথে সাথে পেয়ে যাবেন।
+                  </p>
+                </div>
+                <button id="closeSearchCardBtn" type="button" class="p-1 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 shrink-0">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+              </div>
+              <div class="mt-3 flex items-center gap-2">
+                <button id="retrySearchBtn" type="button" class="py-2 px-3.5 rounded-xl bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-white text-xs font-semibold hover:bg-slate-300 dark:hover:bg-slate-600 transition">
+                  আবার খুঁজুন
+                </button>
+                <button id="saveOfflineContactBtn" type="button" class="py-2 px-3.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 text-xs font-semibold hover:bg-slate-100 dark:hover:bg-slate-700 transition">
+                  কন্টাক্টে সেভ করুন
+                </button>
+              </div>
+            </div>
+          `;
+
+          document.getElementById('closeSearchCardBtn').addEventListener('click', hideSearchResult);
+          document.getElementById('retrySearchBtn').addEventListener('click', () => performNumberSearch(normalized));
+          document.getElementById('saveOfflineContactBtn').addEventListener('click', () => openAddContactModal(normalized));
+        }
+      }
+
+      function hideSearchResult() {
+        el.searchResultBox.classList.add('hidden');
+        el.searchResultBox.innerHTML = '';
+      }
+
+      /* =====================================================================
+         8. MODALS (Add Contact, How-to-use Guide, Confirmation Dialogs)
+      ====================================================================== */
+      function openAddContactModal(prefillNumber = '') {
+        openModal(`
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-base font-bold text-slate-900 dark:text-white">নতুন বন্ধু যোগ করুন</h3>
+            <button id="modalCloseX" type="button" class="p-1.5 rounded-xl text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+          </div>
+          <form id="addContactForm" class="space-y-3.5">
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">বন্ধুর নাম</label>
+              <input id="modalContactName" type="text" required maxlength="30" placeholder="যেমন: তানভীর" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500/40" />
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">মোবাইল নাম্বার</label>
+              <input id="modalContactPhone" type="tel" required value="${PhoneUtils.escapeHtml(prefillNumber)}" placeholder="017XXXXXXXX" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-sm font-mono text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500/40" />
+            </div>
+            <div class="flex gap-2 pt-2">
+              <button type="button" id="modalCancelBtn" class="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-semibold">বাতিল</button>
+              <button type="submit" class="flex-1 py-2.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-xs font-semibold">সেভ করুন</button>
+            </div>
+          </form>
+        `);
+
+        document.getElementById('modalCloseX').onclick = closeModal;
+        document.getElementById('modalCancelBtn').onclick = closeModal;
+        document.getElementById('addContactForm').onsubmit = (e) => {
+          e.preventDefault();
+          const name = document.getElementById('modalContactName').value.trim();
+          const norm = PhoneUtils.normalize(document.getElementById('modalContactPhone').value);
+          if (!PhoneUtils.isValid(norm)) {
+            showToast('সঠিক মোবাইল নাম্বার দিন।', 'warning');
+            return;
+          }
+          saveOrUpdateContact(name, norm);
+          closeModal();
+        };
+      }
+
+      function openHelpModal() {
+        openModal(`
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-base font-bold text-slate-900 dark:text-white">কীভাবে কল করবেন?</h3>
+            <button id="modalCloseX" type="button" class="p-1.5 rounded-xl text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+          </div>
+          <ol class="space-y-2.5 text-xs text-slate-600 dark:text-slate-300 leading-relaxed mb-5">
+            <li class="flex gap-2.5">
+              <span class="w-5 h-5 rounded-full bg-brand-100 dark:bg-brand-900/40 text-brand-600 dark:text-brand-400 font-bold flex items-center justify-center shrink-0">১</span>
+              <span>আপনি এবং আপনার বন্ধু—দুজনই এই অ্যাপটি ওপেন করে নিজেদের মোবাইল নাম্বার দিয়ে প্রবেশ করুন।</span>
+            </li>
+            <li class="flex gap-2.5">
+              <span class="w-5 h-5 rounded-full bg-brand-100 dark:bg-brand-900/40 text-brand-600 dark:text-brand-400 font-bold flex items-center justify-center shrink-0">২</span>
+              <span>উপরের সার্চ বারে বন্ধুর মোবাইল নাম্বার লিখে <strong>খুঁজুন</strong> চাপুন—সঙ্গে সঙ্গে তার আইডি ও অনলাইন স্ট্যাটাস চলে আসবে।</span>
+            </li>
+            <li class="flex gap-2.5">
+              <span class="w-5 h-5 rounded-full bg-brand-100 dark:bg-brand-900/40 text-brand-600 dark:text-brand-400 font-bold flex items-center justify-center shrink-0">৩</span>
+              <span><strong>HD অডিও কল দিন</strong> বাটনে চাপলেই সরাসরি P2P কানেকশনে স্পষ্ট কথা বলা শুরু হবে। কোনো ডাটাবেস খরচ নেই!</span>
+            </li>
+          </ol>
+          <div class="p-3 rounded-2xl bg-brand-50 dark:bg-brand-950/40 text-[11px] text-brand-700 dark:text-brand-300 mb-4">
+            <strong>টেস্ট করার টিপস:</strong> নিজেই এখন পরীক্ষা করতে চাইলে অন্য একটি ব্রাউজার ট্যাব বা অন্য ফোনে ভিন্ন একটি নাম্বার দিয়ে লগইন করে কল দিয়ে দেখুন!
+          </div>
+          <button id="modalGotItBtn" type="button" class="w-full py-2.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-xs font-semibold">বুঝেছি</button>
+        `);
+
+        document.getElementById('modalCloseX').onclick = closeModal;
+        document.getElementById('modalGotItBtn').onclick = closeModal;
+      }
+
+      function openConfirmModal(title, message, confirmLabel, onConfirm) {
+        openModal(`
+          <h3 class="text-base font-bold text-slate-900 dark:text-white mb-2">${PhoneUtils.escapeHtml(title)}</h3>
+          <p class="text-xs text-slate-500 dark:text-slate-400 leading-relaxed mb-5">${PhoneUtils.escapeHtml(message)}</p>
+          <div class="flex gap-2">
+            <button id="confirmCancelBtn" type="button" class="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-semibold">না</button>
+            <button id="confirmOkBtn" type="button" class="flex-1 py-2.5 rounded-xl bg-rose-500 hover:bg-rose-600 text-white text-xs font-semibold">${PhoneUtils.escapeHtml(confirmLabel)}</button>
+          </div>
+        `);
+        document.getElementById('confirmCancelBtn').onclick = closeModal;
+        document.getElementById('confirmOkBtn').onclick = () => {
+          closeModal();
+          onConfirm();
+        };
+      }
+
+      /* =====================================================================
+         9. THEME & VIEW SWITCHING
+      ====================================================================== */
+      function initTheme() {
+        const saved = localStorage.getItem(STORAGE_KEYS.THEME);
+        const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        const isDark = saved ? saved === 'dark' : prefersDark;
+        document.documentElement.classList.toggle('dark', isDark);
+        syncThemeIcons(isDark);
+      }
+
+      function toggleTheme() {
+        const isDark = document.documentElement.classList.toggle('dark');
+        localStorage.setItem(STORAGE_KEYS.THEME, isDark ? 'dark' : 'light');
+        syncThemeIcons(isDark);
+      }
+
+      function syncThemeIcons(isDark) {
+        const sunSvg = `<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z"/></svg>`;
+        const moonSvg = `<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>`;
+        el.loginThemeBtn.innerHTML = isDark ? sunSvg : moonSvg;
+        el.mainThemeBtn.innerHTML = isDark ? sunSvg : moonSvg;
+      }
+
+      function enterDashboard(profile) {
+        el.myNameLabel.textContent = profile.name;
+        el.myNumberLabel.textContent = PhoneUtils.formatDisplay(profile.normalized);
+        el.myAvatar.textContent = PhoneUtils.getInitial(profile.name);
+        el.myAvatar.className = `w-11 h-11 rounded-2xl bg-gradient-to-br ${PhoneUtils.getAvatarGradient(profile.normalized)} text-white font-bold flex items-center justify-center text-base shadow-sm`;
+
+        el.loginView.classList.add('hidden');
+        el.mainView.classList.remove('hidden');
+        renderRecents();
+        renderContacts();
+      }
+
+      function setLoginLoading(loading) {
+        el.loginSubmitBtn.disabled = loading;
+        el.loginBtnText.textContent = loading ? 'সংযুক্ত হচ্ছে...' : 'শুরু করুন';
+        el.loginBtnIcon.classList.toggle('hidden', loading);
+        el.loginSpinner.classList.toggle('hidden', !loading);
+      }
+
+      function updateDialDisplay() {
+        if (!state.dialValue) {
+          el.dialDisplay.innerHTML = `<span class="text-slate-300 dark:text-slate-600 text-base font-sans font-normal">নাম্বার ডায়াল করুন</span>`;
+          el.dialBackspaceBtn.classList.add('hidden');
+        } else {
+          el.dialDisplay.textContent = state.dialValue;
+          el.dialBackspaceBtn.classList.remove('hidden');
+        }
+      }
+
+      /* =====================================================================
+         10. EVENT LISTENERS & INITIALIZATION
+      ====================================================================== */
+      function bindEvents() {
+        // Theme toggles
+        el.loginThemeBtn.addEventListener('click', toggleTheme);
+        el.mainThemeBtn.addEventListener('click', toggleTheme);
+
+        // Login form submit
+        el.loginForm.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          SoundEngine.ensureContext();
+          const name = el.loginNameInput.value.trim();
+          const normalized = PhoneUtils.normalize(el.loginPhoneInput.value);
+
+          if (!name) {
+            showToast('আপনার নাম লিখুন।', 'warning');
+            return;
+          }
+          if (!PhoneUtils.isValid(normalized)) {
+            showToast('সঠিক মোবাইল নাম্বার দিন (কমপক্ষে ৬ সংখ্যা)।', 'warning');
+            return;
+          }
+
+          const profile = {
+            name,
+            normalized,
+            peerId: PhoneUtils.toPeerId(normalized)
+          };
+
+          setLoginLoading(true);
+          try {
+            await PeerEngine.connect(profile);
+            state.profile = profile;
+            Storage.saveProfile();
+            enterDashboard(profile);
+            showToast('সফলভাবে সংযুক্ত হয়েছেন!', 'success');
+          } catch (err) {
+            showToast(err.message, 'error');
+          } finally {
+            setLoginLoading(false);
+          }
+        });
+
+        // Copy own number
+        el.copyMyNumberBtn.addEventListener('click', () => {
+          if (state.profile) {
+            const display = PhoneUtils.formatDisplay(state.profile.normalized);
+            copyToClipboard(display, 'আপনার মোবাইল নাম্বার কপি হয়েছে!');
+          }
+        });
+
+        // Help modal
+        el.helpBtn.addEventListener('click', openHelpModal);
+
+        // Logout with custom confirmation modal
+        el.logoutBtn.addEventListener('click', () => {
+          openConfirmModal(
+            'লগআউট করতে চান?',
+            'লগআউট করলে আপনি অন্য মোবাইল নাম্বার দিয়ে আবার লগইন করতে পারবেন।',
+            'লগআউট',
+            () => {
+              if (state.activeCall) PeerEngine.hangUpCall();
+              if (state.peer) {
+                try { state.peer.destroy(); } catch (e) {}
+                state.peer = null;
+              }
+              state.isOnline = false;
+              state.profile = null;
+              Storage.saveProfile();
+              hideSearchResult();
+              el.mainView.classList.add('hidden');
+              el.loginView.classList.remove('hidden');
+              showToast('লগআউট সম্পন্ন হয়েছে।', 'info');
+            }
+          );
+        });
+
+        // Search input & submit
+        el.searchNumberInput.addEventListener('input', () => {
+          el.clearSearchBtn.classList.toggle('hidden', !el.searchNumberInput.value.trim());
+        });
+
+        el.clearSearchBtn.addEventListener('click', () => {
+          el.searchNumberInput.value = '';
+          el.clearSearchBtn.classList.add('hidden');
+          hideSearchResult();
+          el.searchNumberInput.focus();
+        });
+
+        el.searchForm.addEventListener('submit', (e) => {
+          e.preventDefault();
+          performNumberSearch(el.searchNumberInput.value);
+        });
+
+        // Tab navigation
+        el.tabBtns.forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const target = btn.dataset.tab;
+            el.tabBtns.forEach((b) => {
+              const active = b.dataset.tab === target;
+              b.className = active
+                ? 'tab-btn py-2.5 rounded-xl bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm transition'
+                : 'tab-btn py-2.5 rounded-xl text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition';
+            });
+            el.tabPanels.forEach((panel) => {
+              panel.classList.toggle('hidden', panel.id !== `tab-${target}`);
+            });
+          });
+        });
+
+        // Event delegation for Recents & Contacts buttons
+        document.addEventListener('click', (e) => {
+          const callBtn = e.target.closest('.call-trigger-btn');
+          if (callBtn) {
+            const num = callBtn.dataset.callNumber;
+            const name = callBtn.dataset.callName;
+            PeerEngine.startOutgoingCall(num, name);
+            return;
+          }
+
+          const checkBtn = e.target.closest('.quick-check-btn');
+          if (checkBtn) {
+            const num = checkBtn.dataset.searchNumber;
+            el.searchNumberInput.value = PhoneUtils.formatDisplay(num);
+            el.clearSearchBtn.classList.remove('hidden');
+            performNumberSearch(num);
+            return;
+          }
+
+          const delBtn = e.target.closest('.del-contact-btn');
+          if (delBtn) {
+            const num = delBtn.dataset.delContact;
+            openConfirmModal(
+              'কন্টাক্ট মুছে ফেলবেন?',
+              'এই বন্ধুটিকে আপনার সেভ করা তালিকা থেকে মুছে ফেলা হবে।',
+              'মুছে ফেলুন',
+              () => deleteContact(num)
+            );
+          }
+        });
+
+        // Clear call history
+        el.clearHistoryBtn.addEventListener('click', () => {
+          openConfirmModal(
+            'কল হিস্ট্রি মুছবেন?',
+            'আপনার সাম্প্রতিক সকল কলের তালিকা মুছে ফেলা হবে।',
+            'সব মুছুন',
+            () => {
+              state.recents = [];
+              Storage.saveRecents();
+              renderRecents();
+              showToast('কল হিস্ট্রি মুছে ফেলা হয়েছে।', 'info');
+            }
+          );
+        });
+
+        // Add contact button
+        el.openAddContactBtn.addEventListener('click', () => openAddContactModal());
+
+        // Dialpad interactions
+        el.dialKeys.forEach((keyBtn) => {
+          keyBtn.addEventListener('click', () => {
+            const key = keyBtn.dataset.key;
+            if (state.dialValue.length < 16) {
+              state.dialValue += key;
+              SoundEngine.playDTMF(key);
+              updateDialDisplay();
+            }
+          });
+        });
+
+        el.dialBackspaceBtn.addEventListener('click', () => {
+          state.dialValue = state.dialValue.slice(0, -1);
+          updateDialDisplay();
+        });
+
+        el.dialSearchBtn.addEventListener('click', () => {
+          if (!state.dialValue) {
+            showToast('খোঁজার জন্য আগে নাম্বার ডায়াল করুন।', 'info');
+            return;
+          }
+          el.searchNumberInput.value = state.dialValue;
+          el.clearSearchBtn.classList.remove('hidden');
+          performNumberSearch(state.dialValue);
+        });
+
+        el.dialCallBtn.addEventListener('click', () => {
+          const norm = PhoneUtils.normalize(state.dialValue);
+          if (!PhoneUtils.isValid(norm)) {
+            showToast('সঠিক মোবাইল নাম্বার ডায়াল করুন।', 'warning');
+            return;
+          }
+          PeerEngine.startOutgoingCall(norm);
+        });
+
+        // Call screen controls
+        el.acceptCallBtn.addEventListener('click', () => PeerEngine.acceptIncomingCall());
+        el.declineCallBtn.addEventListener('click', () => PeerEngine.declineIncomingCall());
+        el.endCallBtn.addEventListener('click', () => PeerEngine.hangUpCall());
+        el.muteBtn.addEventListener('click', () => AudioManager.toggleMute());
+        el.speakerBtn.addEventListener('click', () => AudioManager.toggleSpeaker());
+
+        // Close modal on backdrop click
+        el.modalBackdrop.addEventListener('click', (e) => {
+          if (e.target === el.modalBackdrop) closeModal();
+        });
+      }
+
+      /**
+       * Bootstraps the app and auto-reconnects if user already logged in before
+       */
+      async function bootstrap() {
+        initTheme();
+        Storage.load();
+        bindEvents();
+
+        if (state.profile && state.profile.normalized) {
+          el.loginNameInput.value = state.profile.name || '';
+          el.loginPhoneInput.value = state.profile.normalized.startsWith('8801')
+            ? state.profile.normalized.slice(2)
+            : state.profile.normalized;
+
+          setLoginLoading(true);
+          try {
+            await PeerEngine.connect(state.profile);
+            enterDashboard(state.profile);
+          } catch (err) {
+            showToast(err.message, 'warning');
+          } finally {
+            setLoginLoading(false);
+          }
+        }
+      }
+
+      window.addEventListener('DOMContentLoaded', bootstrap);
+    })();
+  </script>
+</body>
+</html>
